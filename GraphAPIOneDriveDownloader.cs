@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using System.Configuration;
 using Microsoft.Graph.Models;
 
-namespace SelfBillInvoiceService.Utils.GraphAPI
+namespace Utils.GraphAPI
 {
     public class OneDriveDownloader
     {
