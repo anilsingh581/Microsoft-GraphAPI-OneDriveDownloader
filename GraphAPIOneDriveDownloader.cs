@@ -112,7 +112,7 @@ namespace SelfBillInvoiceService.Utils.GraphAPI
 
                         // Move file to backup folder before deletion
                         // This logic will moved the file from pending folder to Processed or NotProcessed folder
-                        bool isProcessed = true;
+                        bool isProcessed = false; //Todo: As per your logic return value
                         if (isProcessed)
                         {
                             var moveNotProcessedItem = new DriveItem
