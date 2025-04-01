@@ -1,4 +1,4 @@
-﻿using Azure.Identity;
+using Azure.Identity;
 using Microsoft.Graph;
 using System;
 using System.IO;
@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using System.Configuration;
 using Microsoft.Graph.Models;
 
-namespace Utils.GraphAPI
+namespace SelfBillInvoiceService.Utils.GraphAPI
 {
     public class OneDriveDownloader
     {
@@ -20,9 +20,14 @@ namespace Utils.GraphAPI
         private static readonly string tenantId = ConfigurationManager.AppSettings["TenantId"];
         private static readonly string clientSecret = ConfigurationManager.AppSettings["ClientSecret"];
         private static readonly string driveId = ConfigurationManager.AppSettings["DriveId"];
-        private static readonly string folderId = ConfigurationManager.AppSettings["FolderId"];
         private static readonly string userId = ConfigurationManager.AppSettings["UserId"];
-        private static readonly string downloadDirectoryPath = ConfigurationManager.AppSettings["DownloadDirectoryFolderPath"];
+        private static readonly string folderId = ConfigurationManager.AppSettings["RootFolderId"];
+        
+        private static readonly string pendingFolderId = ConfigurationManager.AppSettings["PendingFolderId"];
+        private static readonly string processedFolderId = ConfigurationManager.AppSettings["ProcessedFolderId"];
+        private static readonly string notProcessedFolderId = ConfigurationManager.AppSettings["NotProcessedFolderId"];
+        
+        private static readonly string downloadDirectoryPath = ConfigurationManager.AppSettings["LocalFolderFilePath"];
 
         /// <summary>
         /// Constructor that initializes GraphServiceClient
@@ -52,45 +57,90 @@ namespace Utils.GraphAPI
             // Ensure directory exists
             Directory.CreateDirectory(downloadDirectoryPath);
 
-            //var users = graphClient.Users[userId].Drives.GetAsync().GetAwaiter().GetResult();
+            /*
+            // Get Users Drive
+             var users = graphClient.Users[userId].Drives.GetAsync().GetAwaiter().GetResult();
 
             // Get the file metadata
-            //var drives = graphClient.Drives[driveId].GetAsync().GetAwaiter().GetResult();
+             var drives = graphClient.Drives[driveId].GetAsync().GetAwaiter().GetResult();
+            */
 
             // Fetch folders in the drive root
-            var children = graphClient.Drives[driveId].Items[folderId].Children.GetAsync().GetAwaiter().GetResult();
-
-            if (children != null)
+            var childrenFolder = graphClient.Drives[driveId].Items[folderId].Children.GetAsync().GetAwaiter().GetResult();
+            if (childrenFolder != null)
             {
                 Console.WriteLine("📂 Folders in Drive Root:");
-                foreach (var item in children.Value)
+                foreach (var item in childrenFolder.Value)
                 {
                     if (item.Folder != null) // Check if it's a folder
                     {
                         Console.WriteLine($"📁 Folder Name: {item.Name} (Folder ID: {item.Id})");
                     }
                 }
+            }
 
-                //Download each files at your location
-                Console.WriteLine($"Total file count: {children.Value.Count}");
-                foreach (var item in children.Value)
+            /*
+            var childrenNotProcessed = graphClient.Drives[driveId].Items[notProcessedFolderId].Children.GetAsync().GetAwaiter().GetResult();
+            var childrenProcessed = graphClient.Drives[driveId].Items[processedFolderId].Children.GetAsync().GetAwaiter().GetResult();
+            */
+
+            // Fetch Files from Pending Folder in the drive root
+            var childrenFile = graphClient.Drives[driveId].Items[pendingFolderId].Children.GetAsync().GetAwaiter().GetResult();
+
+            if (childrenFile != null)
+            {               
+                // Download each files at your location
+                Console.WriteLine($"Total file count: {childrenFile.Value.Count}");
+                foreach (var item in childrenFile.Value)
                 {
                     if (item.File != null)
                     {
+                        string fileId = item.Id;
+
                         Console.WriteLine($"📁 File Name: {item.Name} (File ID: {item.Id}) File Web URL: {item.WebUrl}");
 
-                        var driveItem = graphClient.Drives[driveId].Items[item.Id].GetAsync().GetAwaiter().GetResult();
+                        var driveItem = graphClient.Drives[driveId].Items[fileId].GetAsync().GetAwaiter().GetResult();
                         var filePath = Path.Combine(downloadDirectoryPath, driveItem.Name);
 
-
                         // Get file content
-                        using (var stream = graphClient.Drives[driveId].Items[item.Id].Content.GetAsync().GetAwaiter().GetResult())
+                        using (var stream = graphClient.Drives[driveId].Items[fileId].Content.GetAsync().GetAwaiter().GetResult())
                         using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write))
                         {
                             stream.CopyToAsync(fileStream).GetAwaiter().GetResult();
                         }
-
                         Console.WriteLine($"File downloaded: {driveItem.Name} to {filePath}");
+
+                        // Move file to backup folder before deletion
+                        // This logic will moved the file from pending folder to Processed or NotProcessed folder
+                        bool isProcessed = true;
+                        if (isProcessed)
+                        {
+                            var moveNotProcessedItem = new DriveItem
+                            {
+                                ParentReference = new ItemReference { Id = notProcessedFolderId }
+                            };
+
+                            graphClient.Drives[driveId].Items[fileId].PatchAsync(moveNotProcessedItem).GetAwaiter().GetResult();
+                            Console.WriteLine($"File moved to backup folder: {driveItem.Name} (File ID: {item.Id})");
+                        }
+                        else
+                        {
+                            //Here processedFolderId is a backupFolderId 
+                            var moveProcessedItem = new DriveItem
+                            {
+                                ParentReference = new ItemReference { Id = processedFolderId }
+                            };
+                            graphClient.Drives[driveId].Items[fileId].PatchAsync(moveProcessedItem).GetAwaiter().GetResult();
+                            Console.WriteLine($"File moved to backup folder: {driveItem.Name} (File ID: {item.Id})");
+                        }
+
+                        //var movedFile = graphClient.Drives[driveId].Items[item.Id].GetAsync().GetAwaiter().GetResult();
+                        //Console.WriteLine($"New file location: {movedFile.ParentReference.Id}");
+                        //If the ParentReference.Id is still the original folder, the move was unsuccessful.
+
+                        // Delete file from the drive after successful download
+                        //graphClient.Drives[driveId].Items[item.Id].DeleteAsync().GetAwaiter().GetResult();
+                        Console.WriteLine($"File deleted from drive: {driveItem.Name} (File ID: {item.Id})");
                     }
                 }
             }
