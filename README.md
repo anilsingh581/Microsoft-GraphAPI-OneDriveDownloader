@@ -4,7 +4,9 @@ Microsoft Graph API is a unified REST API provided by Microsoft that lets you ac
 # 📧 Outlook Mail & Calendar
 
 👤 Users & Groups
+
 🗂️ OneDrive & SharePoint Files
+
 📝 Microsoft Teams
 
 # ✅ To-Do, Tasks, Planner, and more
